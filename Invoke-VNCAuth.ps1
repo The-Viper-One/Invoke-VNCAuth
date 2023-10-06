@@ -18,17 +18,20 @@ Param(
     [Switch]$SuccessOnly
 )
 
+$startTime = Get-Date
+Set-Variable MaximumHistoryCount 32767
 
 Write-Host
 Write-Host
 
 $Banner = @'
-    ____                 __            _    ___   ___________         __  __  
-   /  _/___ _   ______  / /_____      | |  / / | / / ____/   | __  __/ /_/ /_ 
-   / // __ \ | / / __ \/ //_/ _ \_____| | / /  |/ / /   / /| |/ / / / __/ __ \
- _/ // / / / |/ / /_/ / ,< /  __/_____/ |/ / /|  / /___/ ___ / /_/ / /_/ / / /
-/___/_/ /_/|___/\____/_/|_|\___/      |___/_/ |_/\____/_/  |_\__,_/\__/_/ /_/ 
+  ___                 _           __     ___   _  ____    _         _   _     
+ |_ _|_ ____   _____ | | _____    \ \   / / \ | |/ ___|  / \  _   _| |_| |__  
+  | || '_ \ \ / / _ \| |/ / _ \____\ \ / /|  \| | |     / _ \| | | | __| '_ \ 
+  | || | | \ V / (_) |   <  __/_____\ V / | |\  | |___ / ___ \ |_| | |_| | | |
+ |___|_| |_|\_/ \___/|_|\_\___|      \_/  |_| \_|\____/_/   \_\__,_|\__|_| |_|
                                                                               
+                                                                                           
                                                                                                                        
 '@
 
@@ -40,7 +43,58 @@ Write-Host
 if ($Port -eq ""){$Port = "5900"} else {$Port = $Port}
 $CurrentDirectory = Join-Path -Path $pwd -ChildPath "VNC-NoAuth.txt"
 
+function Get-IPRange {
+    param (
+        [string]$CIDR
+    )
+    
+    $ErrorActionPreference = "Stop"
+    try {
+        # Extract the base IP and subnet mask from the CIDR notation
+        $baseIP, $prefixLength = $CIDR -split "/"
+        
+        # Ensure the base IP and prefix length are valid
+        if(-not ($baseIP -match "^(\d{1,3}\.){3}\d{1,3}$") -or -not ($prefixLength -match "^\d+$")) {
+            throw "Invalid CIDR format. Ensure you use the format: xxx.xxx.xxx.xxx/yy"
+        }
 
+        # Calculate the number of IP addresses in the range
+        $ipCount = [math]::Pow(2, (32 - [int]$prefixLength))
+        
+        # Convert the base IP to a decimal number
+        $ipBytes = [System.Net.IPAddress]::Parse($baseIP).GetAddressBytes()
+        [Array]::Reverse($ipBytes)
+        $ipDecimal = [BitConverter]::ToUInt32($ipBytes, 0)
+        
+        # Generate all IP addresses within the range
+        $ipAddresses = 0..($ipCount - 1) | ForEach-Object {
+            $currentIPDecimal = $ipDecimal + $_
+            $currentIPBytes = [BitConverter]::GetBytes($currentIPDecimal)
+            [Array]::Reverse($currentIPBytes)
+            "$($currentIPBytes[0]).$($currentIPBytes[1]).$($currentIPBytes[2]).$($currentIPBytes[3])"
+        }
+        
+        return $ipAddresses
+    }
+    catch {
+        Write-Error "An error occurred: $_"
+    }
+}
+
+
+if ($Targets -match "^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$") {
+    if ($Matches[0] -like "*/*") {
+        $Computers = Get-IPRange -CIDR $Targets
+        $CIDRorIP = $True
+    }
+    else {
+    $CIDRorIP = $True
+        $Computers = $Targets
+    }
+}
+
+else {
+$CIDRorIP = $False
 $directoryEntry = [ADSI]"LDAP://$domain"
 $searcher = [System.DirectoryServices.DirectorySearcher]$directoryEntry
 $searcher.PageSize = 1000
@@ -88,13 +142,15 @@ if ($Targets -is [string]) {
         
         $computers = $searcher.FindAll() | Where-Object { $_.Properties["dnshostname"][0] -in $Targets }
             
+            }
         }
     }
 }
 
+if ($CIDRorIP -eq $False){
 $NameLength = ($computers | ForEach-Object { $_.Properties["dnshostname"][0].Length } | Measure-Object -Maximum).Maximum
 $OSLength = ($computers | ForEach-Object { $_.Properties["operatingSystem"][0].Length } | Measure-Object -Maximum).Maximum
-
+}
 
 # Create a runspace pool
 $runspacePool = [runspacefactory]::CreateRunspacePool(1, $Threads)
@@ -185,6 +241,48 @@ return "$AuthSupported"
 
 
 
+
+if ($CIDRorIP -eq $True){
+function Get-FQDNDotNet {
+    param ([string]$IPAddress)
+    try {
+        $hostEntry = [System.Net.Dns]::GetHostEntry($IPAddress)
+        return $hostEntry.HostName
+    }
+    catch {}
+}
+
+function Display-ComputerStatus {
+    param (
+        [string]$ComputerName,
+        [string]$OS,
+        [System.ConsoleColor]$statusColor = 'White',
+        [string]$statusSymbol = "",
+        [string]$statusText = "",
+        [int]$NameLength,
+        [int]$OSLength
+    )
+
+    # Resolve the FQDN
+    $DnsName = Get-FQDNDotNet -IPAddress $ComputerName
+    
+    # Prefix
+    Write-Host "VNC " -ForegroundColor Yellow -NoNewline
+    Write-Host "   " -NoNewline
+    Write-Host ("{0,-16}" -f $ComputerName) -NoNewline
+    Write-Host "   " -NoNewline
+    # Display ComputerName and OS
+    Write-Host ("{0,20}" -f $DnsName) -NoNewline
+    Write-Host "   " -NoNewline
+
+    
+    # Display status symbol and text
+    Write-Host $statusSymbol -ForegroundColor $statusColor -NoNewline
+    Write-Host $statusText
+}
+}
+
+if ($CIDRorIP -eq $False){
 function Display-ComputerStatus {
     param (
         [string]$ComputerName,
@@ -222,13 +320,20 @@ function Display-ComputerStatus {
     Write-Host $statusSymbol -ForegroundColor $statusColor -NoNewline
     Write-Host $statusText
 }
+}
 
 
 # Create and invoke runspaces for each computer
 foreach ($computer in $computers) {
 
+    if ($CIDRorIP -eq $False){
     $ComputerName = $computer.Properties["dnshostname"][0]
     $OS = $computer.Properties["operatingSystem"][0]
+    }
+
+    if ($CIDRorIP -eq $True){
+    $ComputerName = $Computer
+    }
     
     $runspace = [powershell]::Create().AddScript($scriptBlock).AddArgument($ComputerName).AddArgument($Port)
     $runspace.RunspacePool = $runspacePool
@@ -265,7 +370,7 @@ do {
             } 
                 elseif ($result -eq "Supported") {
                     Display-ComputerStatus -ComputerName $($runspace.ComputerName) -OS $($runspace.OS) -statusColor Green -statusSymbol "[+] " -statusText "AUTH NOT REQUIRED" -NameLength $NameLength -OSLength $OSLength
-                        try {$ComputerName | Out-File -FilePath $CurrentDirectory -Encoding "ASCII" -Append} Catch {}
+                        try {$($runspace.ComputerName) | Out-File -FilePath $CurrentDirectory -Encoding "ASCII" -Append} Catch {}
                             $FoundResults = $True
             } 
 
@@ -306,6 +411,21 @@ Write-Host
 # Clean up
 $runspacePool.Close()
 $runspacePool.Dispose()
+
+Write-Host ""
+$Time = (Get-Date).ToString("HH:mm:ss")
+Write-Host "Script Completed : $Time"
+$elapsedTime = (Get-Date) - $startTime
+
+# Format the elapsed time
+$elapsedHours = "{0:D2}" -f $elapsedTime.Hours
+$elapsedMinutes = "{0:D2}" -f $elapsedTime.Minutes
+$elapsedSeconds = "{0:D2}" -f $elapsedTime.Seconds
+$elapsedMilliseconds = "{0:D4}" -f $elapsedTime.Milliseconds
+
+# Display the formatted elapsed time
+$elapsedTimeFormatted = "$elapsedHours h:$elapsedMinutes m:$elapsedSeconds s:$elapsedMilliseconds mi"
+Write-Host "Elapsed Time     : $elapsedTime"
 
 
 }
