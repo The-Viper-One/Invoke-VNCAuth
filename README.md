@@ -10,6 +10,7 @@ IEX(New-Object System.Net.WebClient).DownloadString("https://raw.githubuserconte
 # Usage
 At minimum -Targets is required, otherwise Invoke-VNCAuth supports optional parameters as shown below
 ```
+# Mandatory parameters
 Invoke-VNCAuth -Targets DC01.security.local  # Specifc name or IP
 Invoke-VNCAuth -Targets All                  # All enabled systems in Acitve Directory
 Invoke-VNCAuth -Targets Servers              # All servers in Active Directory
