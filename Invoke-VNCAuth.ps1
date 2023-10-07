@@ -2,7 +2,7 @@ Function Invoke-VNCAuth {
 [CmdletBinding()]
 Param(
 
-    [Parameter(Mandatory=$False, Position=1, ValueFromPipeline=$true)]
+    [Parameter(Mandatory=$True, Position=1, ValueFromPipeline=$true)]
     [String]$Targets = '',
 
     [Parameter(Mandatory=$False, Position=2, ValueFromPipeline=$true)]
@@ -25,13 +25,13 @@ Write-Host
 Write-Host
 
 $Banner = @'
-  ___                 _           __     ___   _  ____    _         _   _     
- |_ _|_ ____   _____ | | _____    \ \   / / \ | |/ ___|  / \  _   _| |_| |__  
-  | || '_ \ \ / / _ \| |/ / _ \____\ \ / /|  \| | |     / _ \| | | | __| '_ \ 
-  | || | | \ V / (_) |   <  __/_____\ V / | |\  | |___ / ___ \ |_| | |_| | | |
- |___|_| |_|\_/ \___/|_|\_\___|      \_/  |_| \_|\____/_/   \_\__,_|\__|_| |_|
-                                                                              
-                                                                                           
+  _____                 _         __      ___   _  _____               _   _     
+ |_   _|               | |        \ \    / / \ | |/ ____|   /\        | | | |    
+   | |  _ ____   _____ | | _____   \ \  / /|  \| | |       /  \  _   _| |_| |__  
+   | | | '_ \ \ / / _ \| |/ / _ \   \ \/ / | . ` | |      / /\ \| | | | __| '_ \ 
+  _| |_| | | \ V / (_) |   <  __/    \  /  | |\  | |____ / ____ \ |_| | |_| | | |
+ |_____|_| |_|\_/ \___/|_|\_\___|     \/   |_| \_|\_____/_/    \_\__,_|\__|_| |_|
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
                                                                                                                        
 '@
 
